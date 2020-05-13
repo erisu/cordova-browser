@@ -52,7 +52,6 @@ function createAndBuild (projectname, projectid) {
 }
 
 describe('create', function () {
-
     it('has a create script in bin/cordova', function () {
         expect(fs.existsSync(createScriptPath)).toBe(true);
     });
@@ -98,5 +97,4 @@ describe('create', function () {
 
         createAndBuild(projectname, projectid);
     });
-
 });

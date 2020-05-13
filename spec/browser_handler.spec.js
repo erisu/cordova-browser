@@ -23,15 +23,21 @@ var path = require('path');
 
 describe('Asset install tests', function () {
     var fsstatMock;
-    var asset = { itemType: 'asset',
+    var asset = {
+        itemType: 'asset',
         src: path.join('someSrc', 'ServiceWorker.js'),
-        target: 'ServiceWorker.js' };
-    var assetWithPath = { itemType: 'asset',
+        target: 'ServiceWorker.js'
+    };
+    var assetWithPath = {
+        itemType: 'asset',
         src: path.join('someSrc', 'reformat.js'),
-        target: path.join('js', 'deepdown', 'reformat.js') };
-    var assetWithPath2 = { itemType: 'asset',
+        target: path.join('js', 'deepdown', 'reformat.js')
+    };
+    var assetWithPath2 = {
+        itemType: 'asset',
         src: path.join('someSrc', 'reformat.js'),
-        target: path.join('js', 'deepdown', 'reformat2.js') };
+        target: path.join('js', 'deepdown', 'reformat2.js')
+    };
 
     var plugin_dir = 'pluginDir';
     var wwwDest = 'dest';
