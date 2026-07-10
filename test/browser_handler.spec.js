@@ -17,112 +17,103 @@
     under the License.
 */
 
-const { describe, it, mock } = require('node:test');
+const { describe, it, mock, before } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const tmp = require('tmp');
+const { PluginInfo } = require('cordova-common');
 
-const browser_handler = require('../lib/browser_handler');
+const BrowserHandler = require('../lib/browser_handler');
+const BrowserProject = require('../lib/BrowserProject');
+
+tmp.setGracefulCleanup();
+
+function makeTempDir () {
+    const tempdir = tmp.dirSync({ unsafeCleanup: true });
+    return path.join(tempdir.name, `cordova-browser-browser-handler-test-${Date.now()}`);
+}
 
 describe('Asset install tests', () => {
-    const asset = {
-        itemType: 'asset',
-        src: path.join('someSrc', 'ServiceWorker.js'),
-        target: 'ServiceWorker.js'
-    };
-    const assetWithPath = {
-        itemType: 'asset',
-        src: path.join('someSrc', 'reformat.js'),
-        target: path.join('js', 'deepdown', 'reformat.js')
-    };
-    const assetWithPath2 = {
-        itemType: 'asset',
-        src: path.join('someSrc', 'reformat.js'),
-        target: path.join('js', 'deepdown', 'reformat2.js')
-    };
+    let pluginInfo;
+    let browserProject;
 
-    const plugin_dir = 'pluginDir';
-    const wwwDest = 'dest';
+    before(() => {
+        const testDir = makeTempDir();
+        fs.cpSync(path.join(__dirname, 'fixtures', 'fakeBrowserPlatformProject'), testDir, { recursive: true });
+        pluginInfo = new PluginInfo(path.join(__dirname, 'fixtures', 'fakePlugin'));
+        browserProject = new BrowserProject(testDir);
+    });
 
-    it('if src is a directory, should be called with cpSync recursive force', () => {
-        const cpSyncSpy = mock.method(fs, 'cpSync', () => {});
-        const mkdirSyncSpy = mock.method(fs, 'mkdirSync', () => {});
-        mock.method(fs, 'statSync', () => ({
-            isDirectory: () => true
-        }));
+    it('if src is a file, should call cpSync with force', async () => {
+        const cpSyncSpy = mock.method(fs, 'cpSync');
+        const mkdirSyncSpy = mock.method(fs, 'mkdirSync');
+        const assets = pluginInfo.getAssets('browser');
+        const asset = assets.find(a => a.src.includes('ServiceWorker.txt'));
 
-        browser_handler.asset.install(asset, plugin_dir, wwwDest);
+        const install = BrowserHandler.getInstaller('asset');
+        await install(asset, pluginInfo, browserProject, {});
 
-        assert.ok(
-            mkdirSyncSpy.mock.calls.some(({ arguments: args }) => (
-                args[0] === wwwDest &&
-                args[1]?.recursive === true
-            ))
-        );
-
+        assert.strictEqual(mkdirSyncSpy.mock.calls.length, 0);
         assert.ok(
             cpSyncSpy.mock.calls.some(({ arguments: args }) => (
-                typeof args[0] === 'string' &&
-                args[1] === path.join('dest', asset.target) &&
-                args[2]?.recursive === true &&
+                args[0].endsWith(path.join('fakePlugin', 'assets', 'ServiceWorker.txt')) &&
+                args[1].endsWith(path.join('www', 'ServiceWorker.txt')) &&
                 args[2]?.force === true
             ))
         );
     });
 
-    it('if src is not a directory and asset has no path, should be called with cp, -f', () => {
-        const cpSyncSpy = mock.method(fs, 'cpSync', () => {});
+    it('if the target directory path does not exist, should call mkdirSync & cpSync', async () => {
+        const cpSyncSpy = mock.method(fs, 'cpSync');
         const mkdirSyncSpy = mock.method(fs, 'mkdirSync');
-        mock.method(fs, 'existsSync', () => true);
-        mock.method(fs, 'statSync', () => ({
-            isDirectory: () => false
-        }));
+        const assets = pluginInfo.getAssets('browser');
+        const asset1 = assets.find(a => a.src.includes('reformat1.txt'));
 
-        browser_handler.asset.install(asset, plugin_dir, wwwDest);
+        const install = BrowserHandler.getInstaller('asset');
+        await install(asset1, pluginInfo, browserProject, {});
 
-        assert.strictEqual(mkdirSyncSpy.mock.calls.length, 0); // not was called
+        assert.strictEqual(mkdirSyncSpy.mock.calls.length, 1);
         assert.ok(
             cpSyncSpy.mock.calls.some(({ arguments: args }) => (
-                args[0] === path.join('pluginDir', asset.src) &&
-                args[1] === path.join('dest', asset.target) &&
+                args[0].endsWith(path.join('fakePlugin', 'assets', 'reformat1.txt')) &&
+                args[1].endsWith(path.join('www', 'js', 'deepdown', 'reformat1.txt')) &&
+                args[2]?.force === true
+            ))
+        );
+
+        // Test another upload
+        const asset2 = assets.find(a => a.src.includes('reformat2.txt'));
+        await install(asset2, pluginInfo, browserProject, {});
+
+        // Should still be 1
+        assert.strictEqual(mkdirSyncSpy.mock.calls.length, 1);
+        assert.ok(
+            cpSyncSpy.mock.calls.some(({ arguments: args }) => (
+                args[0].endsWith(path.join('fakePlugin', 'assets', 'reformat2.txt')) &&
+                args[1].endsWith(path.join('www', 'js', 'deepdown', 'reformat2.txt')) &&
                 args[2]?.force === true
             ))
         );
     });
 
-    it('if src is not a directory and asset has a path, should be called with cp, -f', () => {
-        /*
-            Test that a dest directory gets created if it does not exist
-        */
-        const cpSyncSpy = mock.method(fs, 'cpSync', () => {});
+    it('if src is a directory, it should call cpSync with force and recursive', async () => {
+        const cpSyncSpy = mock.method(fs, 'cpSync');
         const mkdirSyncSpy = mock.method(fs, 'mkdirSync');
-        mock.method(fs, 'statSync', () => ({
-            isDirectory: () => false
-        }));
-        mock.method(fs, 'existsSync', () => false);
+        const assets = pluginInfo.getAssets('browser');
+        const asset = assets.find(a => a.src.includes('folder'));
 
-        browser_handler.asset.install(assetWithPath, plugin_dir, wwwDest);
+        const install = BrowserHandler.getInstaller('asset');
+        await install(asset, pluginInfo, browserProject, {});
 
-        assert.ok(
-            mkdirSyncSpy.mock.calls.some(({ arguments: args }) => (
-                args[0] === path.join('dest', 'js', 'deepdown') &&
-                args[1]?.recursive === true
-            ))
-        );
-
+        assert.strictEqual(mkdirSyncSpy.mock.calls.length, 0);
         assert.ok(
             cpSyncSpy.mock.calls.some(({ arguments: args }) => (
-                args[0] === path.join('pluginDir', assetWithPath.src) &&
-                args[1] === path.join('dest', assetWithPath.target) &&
-                args[2]?.force === true
+                args[0].endsWith(path.join('fakePlugin', 'assets', 'folder')) &&
+                args[1].endsWith(path.join('www', 'folder')) &&
+                args[2]?.force === true &&
+                args[2]?.recursive === true
             ))
         );
-
-        /*
-            Now test that a second call to the same dest folder skips mkdir because the first asset call should have created it.
-        */
-        mock.method(fs, 'existsSync', () => true);
-        browser_handler.asset.install(assetWithPath2, plugin_dir, wwwDest);
-        assert.strictEqual(mkdirSyncSpy.mock.calls.length, 1); // not called again
     });
 });
